@@ -8,9 +8,9 @@ object Lab3 extends JsyApplication with Lab3Like {
   
   /*
    * CSCI 3155: Lab 3 
-   * <Your Name>
+   * Michael Gohde
    * 
-   * Partner: <Your Partner's Name>
+   * Partner: Josh
    * Collaborators: <Any Collaborators>
    */
 
@@ -42,10 +42,10 @@ object Lab3 extends JsyApplication with Lab3Like {
     require(isValue(v))
     (v: @unchecked) match {
       case N(n) => n
-      case B(false) => ???
-      case B(true) => ???
-      case Undefined => ???
-      case S(s) => ???
+      case B(false) => 0
+      case B(true) => 1
+      case Undefined => Double.NaN
+      case S(s) => s.toDouble
       case Function(_, _, _) => Double.NaN
     }
   }
@@ -55,7 +55,9 @@ object Lab3 extends JsyApplication with Lab3Like {
     (v: @unchecked) match {
       case B(b) => b
       case Function(_, _, _) => true
-      case _ => ??? // delete this line when done
+      case S(s) => s.length()!=0
+      case N(n) => n != 0 && n != -0 && n != Double.NaN
+      case _ => false //Undefined values in JavaScript are considered false//??? // delete this line when done
     }
   }
   
@@ -66,7 +68,10 @@ object Lab3 extends JsyApplication with Lab3Like {
         // Here in toStr(Function(_, _, _)), we will deviate from Node.js that returns the concrete syntax
         // of the function (from the input program).
       case Function(_, _, _) => "function"
-      case _ => ??? // delete this line when done
+      case Undefined => "undefined"
+      case N(n) => n.toString()
+      case B(b) => b.toString()
+      case _ => "" //Use a safe default
     }
   }
 
@@ -82,7 +87,76 @@ object Lab3 extends JsyApplication with Lab3Like {
     require(isValue(v2))
     require(bop == Lt || bop == Le || bop == Gt || bop == Ge)
     (v1, v2) match {
-      case _ => ??? // delete this line when done
+      case (N(a), N(b)) => bop match {
+        case Lt => a<b
+        case Le => a<=b
+        case Gt => a>b
+        case Ge => a>=b
+      }
+        // Todo: implement this for strings.
+      //case _ => ??? // delete this line when done
+      case _ => false
+    }
+  }
+
+  //TODO: Actually start using inequalityVal
+
+  def doMathBin(func: (Double, Double) => Double, e1: Expr, e2: Expr): Expr = {
+    val d1=toNumber(e1)
+    val d2=toNumber(e2)
+
+    N(func(d1, d2))
+  }
+
+  def doBinAnd(e1: Expr, e2: Expr): Expr = {
+    val b1=toBoolean(e1)
+    val b2=toBoolean(e2)
+
+    //Fun fact: In JavaScript, if two numbers are anded together and are both not equal to 0, the last
+    //value is returned. So, if x=5 and y=10, x&&y==10
+    //For logical or, the first value is returned:
+    //x||y==5
+
+    if(e1.isInstanceOf[N] && e2.isInstanceOf[N]) {
+      if(b1 && b2) e2 else if(!b1) e1 else if (!b2) e2 else B(false)
+    } else if(e1.isInstanceOf[N]) {
+      if(b1 && b2) e1 else if(!b1) e1 else B(false)
+    } else if(e2.isInstanceOf[N]) {
+      if(b1 && b2) e2 else if(!b2) e2 else B(false)
+    } else {
+      B(b1 && b2)
+    }
+  }
+
+  def doBinOr(e1: Expr, e2: Expr): Expr = {
+    val b1=toBoolean(e1)
+    val b2=toBoolean(e2)
+
+    //Fun fact: In JavaScript, if two numbers are anded together and are both not equal to 0, the last
+    //value is returned. So, if x=5 and y=10, x&&y==10
+    //For logical or, the first value is returned:
+    //x||y==5
+
+    if(e1.isInstanceOf[N] && e2.isInstanceOf[N]) {
+      if(b1 || b2) e2 else B(false)
+    } else if(e1.isInstanceOf[N]) {
+      if(b1 || b2) e1 else if(!b1) e1 else B(false)
+    } else if(e2.isInstanceOf[N]) {
+      if(b1 || b2) e2 else if(!b2) e2 else B(false)
+    } else {
+      B(b1 || b2)
+    }
+  }
+
+  def doCmpBin(func: (Double, Double) =>  Boolean, e1: Expr, e2: Expr): Boolean = {
+    try
+    {
+      val d1=toNumber(e1)
+      val d2=toNumber(e2)
+
+      func(d1, d2)
+    } catch {
+      case e: NumberFormatException => false
     }
   }
 
@@ -96,15 +170,137 @@ object Lab3 extends JsyApplication with Lab3Like {
     e match {
       /* Base Cases */
       case N(_) | B(_) | S(_) | Undefined | Function(_, _, _) => e
-      case Var(x) => ???
+      case Var(x) => try{lookup(env, x)} catch { case ex: NoSuchElementException => Undefined}
       
       /* Inductive Cases */
       case Print(e1) => println(pretty(eval(env, e1))); Undefined
 
         // ****** Your cases here
 
-      case Call(e1, e2) => ???
-      case _ => ??? // delete this line when done
+        //TODO: update this with new ops.
+      case Binary(bop, e1, e2) => bop match
+      {
+        case Plus => {
+          val ee1=eval(env, e1)
+          val ee2=eval(env, e2)
+
+          (ee1, ee2) match {
+            case (S(a), S(b)) => S(a+b)
+            case _ => doMathBin((a: Double, b: Double) => a+b, ee1, ee2)
+          }
+        }
+
+        case Minus => {
+          val ee1=eval(env, e1)
+          val ee2=eval(env, e2)
+
+          doMathBin((a: Double, b:Double) => a-b, ee1, ee2)
+        }
+
+        case Times => {
+          val ee1=eval(env, e1)
+          val ee2=eval(env, e2)
+
+          doMathBin((a: Double, b: Double) => a*b, ee1, ee2)
+        }
+
+        case Div => {
+          val ee1=eval(env, e1)
+          val ee2=eval(env, e2)
+
+          doMathBin((a: Double, b:Double) => a/b, ee1, ee2)
+        }
+
+        case And => doBinAnd(eval(env, e1), eval(env, e2))
+        case Or => doBinOr(eval(env, e1), eval(env, e2))
+
+        case Eq => {
+          val ee1=eval(env, e1)
+          val ee2=eval(env, e2)
+
+          (ee1, ee2) match {
+            case (S(a), S(b)) => B(a==b)
+            case (N(a), N(b)) => B(a==b)
+            case (B(a), B(b)) => B(a==b)
+            case _ => {
+              Undefined
+            }
+          }
+        }
+
+        case _ => B(inequalityVal(bop, e1, e2))
+
+        //case Eq => inequalityVal()
+        //case Ne => B(doCmpBin((a: Double, b: Double) => (a != b), eval(env, e1), eval(env, e2)))
+        //case Lt => B(doCmpBin((a: Double, b: Double) => (a < b), eval(env, e1), eval(env, e2)))
+        //case Le => B(doCmpBin((a: Double, b: Double) => (a <= b), eval(env, e1), eval(env, e2)))
+        //case Gt => B(doCmpBin((a: Double, b: Double) => (a > b), eval(env, e1), eval(env, e2)))
+        //case Ge => B(doCmpBin((a: Double, b: Double) => (a >= b), eval(env, e1), eval(env, e2)))
+
+
+        case Seq => {eval(env, e1)
+          eval(env, e2)}
+
+        case _ => Undefined
+      }
+
+      case Unary(uop, e1) => uop match {
+        case Not => eval(env, e1) match
+        {
+          case B(b) => B(!b)
+          case _ => Undefined
+        }
+        case Neg => eval(env, e1) match
+        {
+          case N(n) => N(-n)
+          case _ => Undefined
+        }
+
+        case _ => Undefined
+      }
+
+        //Update to handle functions better:
+      case ConstDecl(x, e1, e2) => {
+        val ee1=eval(env, e1)
+        val newEnv=extend(env, x, ee1)
+        eval(newEnv, e2)
+      }
+
+      case If(e1, e2, e3) => {
+        if(toBoolean(eval(env, e1))) eval(env, e2) else eval(env, e3)
+      }
+
+      case Call(e1, e2) => {
+        val ee1=eval(env, e1)
+        val ee2=eval(env, e2)
+
+        //The first argument to Call is a function definition. The second should be its parameter.
+        ee1 match {
+          // The first string allows us to recurse given a function name
+          //The second string allows us to set a parameter
+          //The third value is the expression with which we evaluate this function.
+          //We need to extend the environment with the parameter.
+          case Function(fname: Option[String], fparam, fe1) => fname match{
+            case Some(fn) => {
+              val newEnv=extend(extend(env, fn, ee1), fparam, ee2)
+              eval(newEnv, fe1)
+            }
+            case None => {
+              val newEnv=extend(env, fparam, ee2)
+              eval(newEnv, fe1)
+            }
+          }
+
+          case _ => {
+            //Add better handling code
+            Undefined
+          }
+        }
+
+        //Add implementation for specific features like recursion
+        //Note: recursion should differ from regular function calls in how we handle environments.
+      }
+      case _ => Undefined // delete this line when done
     }
   }
     
@@ -112,7 +308,12 @@ object Lab3 extends JsyApplication with Lab3Like {
   /* Small-Step Interpreter with Static Scoping */
 
   def iterate(e0: Expr)(next: (Expr, Int) => Option[Expr]): Expr = {
-    def loop(e: Expr, n: Int): Expr = ???
+    def loop(e: Expr, n: Int): Expr = {
+      e match {
+        case N(_) | B(_) | Undefined | S(_) => e
+        //case _ => loop(substitute())
+      }
+    }
     loop(e0, 0)
   }
   
@@ -121,7 +322,21 @@ object Lab3 extends JsyApplication with Lab3Like {
     e match {
       case N(_) | B(_) | Undefined | S(_) => e
       case Print(e1) => Print(substitute(e1, v, x))
-      case Unary(uop, e1) => ???
+      case Unary(uop, e1) => {
+        uop match {
+          case Neg => {
+            e1 match {
+              case N(a) => N(-a)
+            }
+          }
+
+          case Not => {
+            e1 match {
+              case B(b) => B(!b)
+            }
+          }
+        }
+      }
       case Binary(bop, e1, e2) => ???
       case If(e1, e2, e3) => ???
       case Call(e1, e2) => ???
@@ -143,6 +358,14 @@ object Lab3 extends JsyApplication with Lab3Like {
       case Print(e1) => Print(step(e1))
       
         // ****** Your cases here
+
+      case Unary(uop, e1) => {
+        uop match {
+          case Neg => e1 match {
+            case N(n) => N(-n)
+          }
+        }
+      }
 
       /* Cases that should never match. Your cases above should ensure this. */
       case Var(_) => throw new AssertionError("Gremlins: internal error, not closed expression.")
