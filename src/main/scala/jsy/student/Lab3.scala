@@ -228,6 +228,9 @@ object Lab3 extends JsyApplication with Lab3Like {
           }
         }
 
+        case Seq => {eval(env, e1)
+          eval(env, e2)}
+
         case _ => B(inequalityVal(bop, e1, e2))
 
         //case Eq => inequalityVal()
@@ -236,10 +239,6 @@ object Lab3 extends JsyApplication with Lab3Like {
         //case Le => B(doCmpBin((a: Double, b: Double) => (a <= b), eval(env, e1), eval(env, e2)))
         //case Gt => B(doCmpBin((a: Double, b: Double) => (a > b), eval(env, e1), eval(env, e2)))
         //case Ge => B(doCmpBin((a: Double, b: Double) => (a >= b), eval(env, e1), eval(env, e2)))
-
-
-        case Seq => {eval(env, e1)
-          eval(env, e2)}
 
         case _ => Undefined
       }
@@ -309,41 +308,44 @@ object Lab3 extends JsyApplication with Lab3Like {
 
   def iterate(e0: Expr)(next: (Expr, Int) => Option[Expr]): Expr = {
     def loop(e: Expr, n: Int): Expr = {
-      e match {
-        case N(_) | B(_) | Undefined | S(_) => e
-        //case _ => loop(substitute())
-      }
+      //e match {
+        //case N(_) | B(_) | Undefined | S(_) => e
+        //case _ =>
+        next(e, n) match {
+          case Some(ee) => loop(ee, n + 1)
+          case None => e
+        }
     }
+
     loop(e0, 0)
   }
-  
+
+  //This function substitutes v for all free x in the expression. Nifty!
   def substitute(e: Expr, v: Expr, x: String): Expr = {
     require(isValue(v))
     e match {
       case N(_) | B(_) | Undefined | S(_) => e
       case Print(e1) => Print(substitute(e1, v, x))
-      case Unary(uop, e1) => {
-        uop match {
-          case Neg => {
-            e1 match {
-              case N(a) => N(-a)
-            }
-          }
-
-          case Not => {
-            e1 match {
-              case B(b) => B(!b)
-            }
-          }
-        }
+      case Unary(uop, e1) => Unary(uop, substitute(e1, v, x))
+        //TODO: add special handling for seqs?
+      case Binary(bop, e1, e2) => Binary(bop, substitute(e1, v, x), substitute(e2, v, x))
+      case If(e1, e2, e3) => If(substitute(e1, v, x), substitute(e2, v, x), substitute(e3, v, x))
+        // TODO: Reconsider how we sub values in Call:
+      case Call(e1, e2) => Call(substitute(e1, v, x), substitute(e2, v, x))
+      case Var(y) => {
+        //If we can't replace this value, we just have to pass it back up the chain.
+        //Else we do and all is well.
+        if(y==x) v else e//Var(y)
       }
-      case Binary(bop, e1, e2) => ???
-      case If(e1, e2, e3) => ???
-      case Call(e1, e2) => ???
-      case Var(y) => ???
-      case Function(None, y, e1) => ???
+      case Function(None, y, e1) => {
+        if(x==y) e else Function(None, y, substitute(e1, v, x))
+      }
+
       case Function(Some(y1), y2, e1) => ???
-      case ConstDecl(y, e1, e2) => ???
+        //Leave constdecls alone except for e1 if the variable match. Why?
+        //the first expression may still require expansion, but the scope is set up for the second expression.
+        //Constdecls take the form const name=val; secondexpr.
+      case ConstDecl(y, e1, e2) => if(x==y) ConstDecl(y, substitute(e1, v, x), e2) else ConstDecl(y, substitute(e1, v, x), substitute(e2, v, x)) //ConstDecl(y, substitute(e1, v, x), e2)
     }
   }
     
@@ -351,27 +353,88 @@ object Lab3 extends JsyApplication with Lab3Like {
     e match {
       /* Base Cases: Do Rules */
       case Print(v1) if isValue(v1) => println(pretty(v1)); Undefined
-      
-        // ****** Your cases here
-      
-      /* Inductive Cases: Search Rules */
-      case Print(e1) => Print(step(e1))
-      
-        // ****** Your cases here
 
-      case Unary(uop, e1) => {
-        uop match {
-          case Neg => e1 match {
-            case N(n) => N(-n)
+      case Binary(bop, v1, v2) if(isValue(v1)&&isValue(v2)) => {
+        bop match {
+            //TODO: Consider type conversions here.
+          case Plus => {
+            (v1, v2) match {
+              case (S(a), S(b)) => S(a+b)
+              case (N(a), N(b)) => N(a+b)
+              case (N(a), _) => N(a+toNumber(v2))
+            }
+          }
+          case Minus => {
+            N(toNumber(v1)-toNumber(v2))
+          }
+
+          case Times => {
+            N(toNumber(v1)*toNumber(v2))
+          }
+
+          case Div => {
+            N(toNumber(v1)/toNumber(v2))
+          }
+          case Eq => {
+            Undefined
+          }
+
+          case Gt => {
+            B(toNumber(v1) > toNumber(v2))
+          }
+
+          case Ge => {
+            B(toNumber(v1) >= toNumber(v2))
+          }
+
+          case Lt => {
+            B(toNumber(v1) < toNumber(v2))
+          }
+
+          case Le => {
+            B(toNumber(v1) <= toNumber(v2))
           }
         }
       }
+
+      case Unary(uop, v1) if isValue(v1) => uop match{
+        //DoNeg
+        case Neg => N(-toNumber(v1))
+        //DoNot
+        case Not => B(!toBoolean(v1))
+        case _ => Undefined
+      }
+
+      case If(v1, e2, e3) if isValue(v1) => if(toBoolean(v1)) e2 else e3
+      case ConstDecl(x, v1, e2) if isValue(v1) => substitute(e2, v1, x) //Substitute v1 for all free x in e2
+      
+      /* Inductive Cases: Search Rules */
+      case Print(e1) => Print(step(e1))
+
+        //SearchBinary and SearchBinaryArith2 should be merged cases
+        //SearchEquality2 is handled on its own
+        //This is an admittedly very ugly way of handling the binary search cases:
+      case Binary(bop, e1, e2) => bop match {
+          //We may step on both sides for arithmetic operations:
+        case Plus | Minus | Times | Div | Gt | Lt | Ge | Le => if(isValue(e1)) Binary(bop, e1, step(e2)) else Binary(bop, step(e1), e2)
+        case Eq => if(isValue(e1)) Undefined else Binary(bop, step(e1), e2)
+          //We may only step on the left side for SearchBinary
+        case _ => Binary(bop, step(e1), e2)
+      }
+        //SearchUnary
+      case Unary(uop, e1) => Unary(uop, step(e1))
+        //SearchIf
+      case If(e1, e2, e3) => If(step(e1), e2, e3)
+        //SearchConst
+      case ConstDecl(x, e1, e2) => ConstDecl(x, step(e1), e2)
 
       /* Cases that should never match. Your cases above should ensure this. */
       case Var(_) => throw new AssertionError("Gremlins: internal error, not closed expression.")
       case N(_) | B(_) | Undefined | S(_) | Function(_, _, _) => throw new AssertionError("Gremlins: internal error, step should not be called on values.");
     }
   }
+
+
 
 
   /* External Interfaces */
