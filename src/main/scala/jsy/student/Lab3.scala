@@ -337,11 +337,12 @@ object Lab3 extends JsyApplication with Lab3Like {
         //Else we do and all is well.
         if(y==x) v else e//Var(y)
       }
-      case Function(None, y, e1) => {
-        if(x==y) e else Function(None, y, substitute(e1, v, x))
-      }
 
-      case Function(Some(y1), y2, e1) => ???
+      case Function(fname: Option[String], y2, e1) => fname match{
+        case None => if(x==y2) e else Function(None, y2, substitute(e1, v, x))
+        case Some(fn) => if(x!=fn) e else Function(fname, y2, substitute(e1, v, x))
+        //case _ => ???
+      }
         //Leave constdecls alone except for e1 if the variable match. Why?
         //the first expression may still require expansion, but the scope is set up for the second expression.
         //Constdecls take the form const name=val; secondexpr.
@@ -407,6 +408,16 @@ object Lab3 extends JsyApplication with Lab3Like {
 
       case If(v1, e2, e3) if isValue(v1) => if(toBoolean(v1)) e2 else e3
       case ConstDecl(x, v1, e2) if isValue(v1) => substitute(e2, v1, x) //Substitute v1 for all free x in e2
+      case Call(e1, v2) if isValue(v2) => e1 match {
+        case Function(fname: Option[String], x, ee1) => fname match {
+            //In order to recurse, we need to create an expression such that
+            //v1 is substituted for x1 and v2 is substituted for x2 in v1=x1(x2) => e1
+          //case Some(fn) => substitute(substitute(ee1, ee1, fn), v2, x)
+          case Some(fn) => substitute(substitute(ee1, e1, fn), v2, x)
+          case None => substitute(ee1, v2, x)
+        }
+        case _ => Undefined //Throw a typeerror here, since we can't call a not function.
+      }
       
       /* Inductive Cases: Search Rules */
       case Print(e1) => Print(step(e1))
@@ -427,6 +438,8 @@ object Lab3 extends JsyApplication with Lab3Like {
       case If(e1, e2, e3) => If(step(e1), e2, e3)
         //SearchConst
       case ConstDecl(x, e1, e2) => ConstDecl(x, step(e1), e2)
+        //SearchCall
+      case Call(e1, e2) => Call(e1, step(e2))
 
       /* Cases that should never match. Your cases above should ensure this. */
       case Var(_) => throw new AssertionError("Gremlins: internal error, not closed expression.")
